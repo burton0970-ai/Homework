@@ -1,75 +1,59 @@
-#14846070 林家愷
-
 import numpy as np
 import numpy.linalg as la
 import matplotlib.pyplot as plt
-import pandas as pd
 
-# calculate the eigenvalues and eigenvectors of a squared matrix
-# the eigenvalues are decreasing ordered
-def myeig(A, symmetric=False):
-    if symmetric:
-        lambdas, V = np.linalg.eigh(A)
-    else:
-        lambdas, V = np.linalg.eig(A)
-    # lambdas, V may contain complex value
-    lambdas_real = np.real(lambdas)
-    sorted_idx = lambdas_real.argsort()[::-1] 
-    return lambdas[sorted_idx], V[:, sorted_idx]
+# --------------------------------------------------
+# 參數設定（對應題目）
+pts = 50          # number of samples
+n = 5             # Fourier order
+l, r = -2, 2      # interval [l, r]
 
-# SVD: A = U * Sigma * V^T
-# V: eigenvector matrix of A^T * A; U: eigenvector matrix of A * A^T 
-def mysvd(A):
-    lambdas, V = myeig(A.T @ A, symmetric=True)
-    lambdas, V = np.real(lambdas), np.real(V)
-    # if A is full rank, no lambda value is less than 1e-6 
-    # append a small value to stop rank check
-    lambdas = np.append(lambdas, 1e-12)
-    rank = np.argwhere(lambdas < 1e-6).min()
-    lambdas, V = lambdas[0:rank], V[:, 0:rank]
-    U = A @ V / np.sqrt(lambdas)
-    Sigma = np.diag(np.sqrt(lambdas))
-    return U, Sigma, V
+# --------------------------------------------------
+# 建立 x 與 y（題目給的測試資料）
+x = np.linspace(l, r, pts)
+y = np.zeros_like(x)
 
-
-pts = 50
-x = np.linspace(-2, 2, pts)
-y = np.zeros(x.shape)
-
-# square wave
+# square wave (題目指定)
 pts2 = pts // 2
-y[0:pts2] = -1
+y[:pts2] = -1
 y[pts2:] = 1
 
-# sort x
-argidx = np.argsort(x)
-x = x[argidx]
-y = y[argidx]
-
-T0 = np.max(x) - np.min(x)
+# --------------------------------------------------
+# 週期與角頻率
+T0 = r - l
 f0 = 1.0 / T0
 omega0 = 2.0 * np.pi * f0
 
-# ---------- Step 1: 建構設計矩陣 X ----------
-n = 5
-# φ(x) = [1, cos(ω0 x), ..., cos(n ω0 x), sin(ω0 x), ..., sin(n ω0 x)]
-cols = [np.ones_like(x)]
-cols += [np.cos(k * omega0 * x) for k in range(1, n + 1)]
-cols += [np.sin(k * omega0 * x) for k in range(1, n + 1)]
-X = np.column_stack(cols)             # 形狀: (m, 1+2n)
+# --------------------------------------------------
+# step1: generate design matrix X = φ(x)
+# X = [1 cos(w0x) ... cos(nw0x) sin(w0x) ... sin(nw0x)]
+X = np.ones((pts, 2 * n + 1))
 
-# ---------- Step 2: X 的短式 SVD：X = U Σ V^T ----------
-U, Sigma, V = mysvd(X)                # U:(m,r), Σ:(r,r), V:(p,r) 其中 p=1+2n
+for k in range(1, n + 1):
+    X[:, k] = np.cos(k * omega0 * x)
+    X[:, n + k] = np.sin(k * omega0 * x)
 
-# ---------- Step 3: 最小平方解 a = X^+ y = V Σ^{-1} U^T y ----------
-a = V @ np.linalg.inv(Sigma) @ (U.T @ y)
+# --------------------------------------------------
+# step2: SVD of X
+U, S, VT = la.svd(X, full_matrices=False)
 
+# --------------------------------------------------
+# step3: solve least squares using short SVD
+# a = V Σ^{-1} U^T y
+a = VT.T @ (np.diag(1.0 / S) @ (U.T @ y))
+
+# --------------------------------------------------
+# step4: reconstructed curve
 y_bar = X @ a
-plt.plot(x, y_bar, 'g-', label='predicted values') 
-plt.plot(x, y, 'b-', label='true values')
+
+# --------------------------------------------------
+# Plot result
+plt.figure(figsize=(6, 4))
+plt.plot(x, y, 'b.', label='True data')
+plt.plot(x, y_bar, 'g-', label='Fitted curve')
 plt.xlabel('x')
-plt.xlabel('y')
+plt.ylabel('y')
+plt.title('Fourier Least Squares Approximation (SVD)')
 plt.legend()
+plt.grid(True)
 plt.show()
-
-
