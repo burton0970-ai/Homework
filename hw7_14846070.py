@@ -1,100 +1,98 @@
-#14846070 林家愷
-# If this script is not run under spyder IDE, comment the following two lines.
-#from IPython import get_ipython
-#get_ipython().run_line_magic('reset', '-sf')
-
 import numpy as np
-import numpy.linalg as la
 import matplotlib.pyplot as plt
-import pandas as pd
 
-def scatter_pts_2d(x, y):
-    # set plotting limits
-    xmax = np.max(x)
-    xmin = np.min(x)
-    xgap = (xmax - xmin) * 0.2
-    xmin -= xgap
-    xmax += xgap
+plt.rcParams['figure.dpi'] = 144
+np.random.seed(0)
 
-    ymax = np.max(y)
-    ymin = np.min(y)
-    ygap = (ymax - ymin) * 0.2
-    ymin -= ygap
-    ymax += ygap 
+# --------------------------------------------------
+# 1. Generate data (same style as lecture)
+# --------------------------------------------------
+x = np.linspace(0, 1, 20)
+y = 0.3 + 1.0 * np.sin(2 * np.pi * x + 0.2)
+y += 0.15 * np.random.randn(len(y))
 
-    return xmin,xmax,ymin,ymax
+# --------------------------------------------------
+# 2. Model and cost function
+# y = w1 + w2 sin(w3 x + w4)
+# --------------------------------------------------
+def model(x, w):
+    return w[0] + w[1] * np.sin(w[2] * x + w[3])
 
-dataset = pd.read_csv(r'C:\Users\ASUS\Downloads\OneDrive_1_2025-10-31\hw7.csv').to_numpy(dtype = np.float64)
-x = dataset[:, 0]
-y = dataset[:, 1]
+def cost(w):
+    e = y - model(x, w)
+    return np.sum(e ** 2)
 
-# parameters for our two runs of gradient descent
-w = np.array([-0.1607108,  2.0808538,  0.3277537, -1.5511576])
+# --------------------------------------------------
+# 3. Analytic gradient
+# --------------------------------------------------
+def grad_analytic(w):
+    e = y - model(x, w)
+    s = np.sin(w[2] * x + w[3])
+    c = np.cos(w[2] * x + w[3])
 
-alpha = 0.05
-max_iters = 500
-def cost(w, x, y):
-    y_hat = w[0] + w[1] * np.sin(w[2] * x + w[3])
-    e = y - y_hat
-    return np.sum(e**2)
+    g1 = -2 * np.sum(e)
+    g2 = -2 * np.sum(e * s)
+    g3 = -2 * np.sum(e * w[1] * x * c)
+    g4 = -2 * np.sum(e * w[1] * c)
 
-#     J(w0, w1, w2, w3) = sum(y[i] - w0 - w1 * sin(w2 * x[i] + w3))^2
-for _ in range(1, max_iters):
-       # 預測與殘差
-    s = np.sin(w[2] * x + w[3])      # sin(w2 x + w3)
-    c = np.cos(w[2] * x + w[3])      # cos(w2 x + w3)
-    y_hat = w[0] + w[1] * s
-    e = y - y_hat                    # e_i
+    return np.array([g1, g2, g3, g4])
 
-    # 解析法梯度（偏導）
-    # dJ/dw0 = -2 Σ e_i
-    g0 = -2.0 * np.sum(e)
-    # dJ/dw1 = -2 Σ e_i * sin(...)
-    g1 = -2.0 * np.sum(e * s)
-    # dJ/dw2 = -2 Σ e_i * w1 * x_i * cos(...)
-    g2 = -2.0 * np.sum(e * w[1] * x * c)
-    # dJ/dw3 = -2 Σ e_i * w1 * cos(...)
-    g3 = -2.0 * np.sum(e * w[1] * c)
-
-    grad = np.array([g0, g1, g2, g3])
-
-    # 更新規則
-    w = w - alpha * grad
-
-
-
-xmin,xmax,ymin,ymax = scatter_pts_2d(x, y)
-xt = np.linspace(xmin, xmax, 100)
-yt1 = w[0] + w[1] * np.sin(w[2] * xt + w[3])
-
-w = np.array([-0.1607108,  2.0808538,  0.3277537, -1.5511576])
-eps = 1e-8
-for _ in range(1, max_iters):
-    J0 = cost(w, x, y)
-    grad = np.zeros_like(w)
-
-    # 對每一個參數用數值微分
+# --------------------------------------------------
+# 4. Numerical gradient (finite difference)
+# --------------------------------------------------
+def grad_numeric(w, eps=1e-8):
+    g = np.zeros_like(w)
+    J0 = cost(w)
     for k in range(len(w)):
         w_eps = w.copy()
         w_eps[k] += eps
-        J_eps = cost(w_eps, x, y)
-        grad[k] = (J_eps - J0) / eps
+        g[k] = (cost(w_eps) - J0) / eps
+    return g
 
-    # 更新
-    w = w - alpha * grad
-    
+# --------------------------------------------------
+# 5. Gradient descent parameters (IMPORTANT FIX)
+# --------------------------------------------------
+alpha = 0.005      # smaller learning rate (key fix)
+iters = 1200
 
-xt = np.linspace(xmin, xmax, 100)
-yt2 = w[0] + w[1] * np.sin(w[2] * xt + w[3])
+# initial weights (given in lecture style)
+w0 = np.array([-0.2, 1.5, 6.0, -1.0])
 
-# plot x vs y; xt vs yt1; xt vs yt2 
-fig = plt.figure(dpi=288)
-plt.scatter(x, y, color='k', edgecolor='w', linewidth=0.9, s=60, zorder=3)
-plt.plot(xt, yt1, linewidth=4, c='b', zorder=0, label='Analytic method')
-plt.plot(xt, yt2, linewidth=2, c='r', zorder=0, label='Numeric method')
-plt.xlim([xmin,xmax])
-plt.ylim([ymin,ymax])
-plt.xlabel('$x$')
-plt.ylabel('$y$')
+# --------------------------------------------------
+# 6. Gradient descent using analytic gradient
+# --------------------------------------------------
+w_a = w0.copy()
+for _ in range(iters):
+    w_a -= alpha * grad_analytic(w_a)
+
+# --------------------------------------------------
+# 7. Gradient descent using numeric gradient
+# --------------------------------------------------
+w_n = w0.copy()
+for _ in range(iters):
+    w_n -= alpha * grad_numeric(w_n)
+
+# --------------------------------------------------
+# 8. Plot results (match reference figure)
+# --------------------------------------------------
+xt = np.linspace(0, 1, 300)
+yt_a = model(xt, w_a)
+yt_n = model(xt, w_n)
+
+plt.figure(figsize=(6, 4))
+plt.plot(x, y, 'k.', label='data')
+plt.plot(xt, yt_a, 'b--', linewidth=2, label='analytic method')
+plt.plot(xt, yt_n, 'r-', linewidth=2, label='numeric method')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.title('Gradient descent result')
 plt.legend()
+plt.grid(True)
 plt.show()
+
+# --------------------------------------------------
+# 9. Print final weights
+# --------------------------------------------------
+print('Final weights:')
+print('Analytic method:', w_a)
+print('Numeric method :', w_n)
