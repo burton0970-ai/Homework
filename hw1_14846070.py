@@ -18,10 +18,6 @@ def gram_schmidt(S1: np.ndarray):
 
     return S2
 
-
-# ==========================
-# 定義輸入矩陣 S1（一定要有）
-# ==========================
 S1 = np.array([
     [1, 1, 0],
     [1, 0, 1],
@@ -35,3 +31,4 @@ S2 = gram_schmidt(S1)
 np.set_printoptions(precision=2, suppress=True)
 print("S2^T @ S2 =")
 print(S2.T @ S2)
+
