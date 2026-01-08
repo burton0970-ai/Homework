@@ -1,169 +1,111 @@
-#14846070 林家楷
-# If this script is not run under spyder IDE, comment the following two lines.
-#from IPython import get_ipython
-#get_ipython().run_line_magic('reset', '-sf')
-
-import math
 import numpy as np
-import numpy.linalg as la
 import matplotlib.pyplot as plt
-import pandas as pd
+import csv
+import os
 
-# calculate the eigenvalues and eigenvectors of a squared matrix
-# the eigenvalues are decreasing ordered
-def myeig(A, symmetric=False):
-    if symmetric:
-        lambdas, V = np.linalg.eigh(A)
-    else:
-        lambdas, V = np.linalg.eig(A)
-    # lambdas, V may contain complex value
-    lambdas_real = np.real(lambdas)
-    sorted_idx = lambdas_real.argsort()[::-1] 
-    return lambdas[sorted_idx], V[:, sorted_idx]
+plt.rcParams['figure.dpi'] = 144
 
-# SVD: A = U * Sigma * V^T
-# V: eigenvector matrix of A^T * A; U: eigenvector matrix of A * A^T 
-def mysvd(A):
-    lambdas, V = myeig(A.T @ A, symmetric=True)
-    lambdas, V = np.real(lambdas), np.real(V)
-    # if A is full rank, no lambda value is less than 1e-6 
-    # append a small value to stop rank check
-    lambdas = np.append(lambdas, 1e-12)
-    rank = np.argwhere(lambdas < 1e-6).min()
-    lambdas, V = lambdas[0:rank], V[:, 0:rank]
-    U = A @ V / np.sqrt(lambdas)
-    Sigma = np.diag(np.sqrt(lambdas))
-    return U, Sigma, V
+# --------------------------------------------------
+# 1. Read hw5.csv (or generate synthetic data if not found)
+# --------------------------------------------------
+time = []
+conc = []
 
-def row_norm_square(X):
-    return np.sum(X * X, axis=1)
+CSV_PATH = 'hw5.csv'
 
-# gaussian weight array g=[ g_1 g_2 ... g_m ]
-# g_i = exp(-0.5 * ||x_i - c||^2 / sigma^2)
-def gaussian_weight(X, c, sigma=1.0):
-    s = 0.5 / sigma / sigma;
-    norm2 = row_norm_square(X - c)
-    g = np.exp(-s * norm2)
-    return g
+if os.path.exists(CSV_PATH):
+    print('[Info] hw5.csv found, reading data...')
 
-# xt: a sample in Xt
-# yt: predicted value of f(xt)
-# yt = (X.T @ G(xt) @ X)^-1 @ X.T @ G(xt) @ y
-def predict(X, y, Xt, sigma=1.0):
-    ntest = Xt.shape[0] # number of test samples 
-    yt = np.zeros(ntest)
-    for xi in range(ntest):
-        c = Xt[xi, :]
-        g = gaussian_weight(X, c, sigma) # diagonal elements in G
-        G = np.diag(g)
-        w = la.pinv(X.T @ G @ X) @ X.T @ G @ y
-        yt[xi] = c @ w
-    return yt
+    with open(CSV_PATH, 'r') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
 
-# Xs: m x n matrix; 
-# m: pieces of sample
-# K: m x m kernel matrix
-# K[i,j] = exp(-c(|xt_i|^2 + |xs_j|^2 -2(xt_i)^T @ xs_j)) where c = 0.5 / sigma^2
-# 更多實作說明, 參考課程oneonte筆記
+        # skip header if exists
+        start_idx = 1 if not rows[0][0].replace('.', '').isdigit() else 0
 
-def calc_gaussian_kernel(Xt, Xs, sigma=1):
-    nt, _ = Xt.shape # pieces of Xt
-    ns, _ = Xs.shape # pieces of Xs
-    
-    norm_square = row_norm_square(Xt)
-    F = np.tile(norm_square, (ns, 1)).T
-    
-    norm_square = row_norm_square(Xs)
-    G = np.tile(norm_square, (nt, 1))
-    
-    E = F + G - 2.0 * Xt @ Xs.T
-    s = 0.5 / (sigma * sigma)
-    K = np.exp(-s * E)
-    return K
+        for row in rows[start_idx:]:
+            time.append(float(row[0]))
+            conc.append(float(row[1]))
 
-# n: degree of polynomial
-# generate X=[1 x x^2 x^3 ... x^n]
-# m: pieces(rows) of data(X)
-# X is a m x (n+1) matrix
-def poly_data_matrix(x: np.ndarray, n: int):
-    m = x.shape[0]
-    X = np.zeros((m, n + 1))
-    X[:, 0] = 1.0
-    for deg in range(1, n + 1):
-        X[:, deg] = X[:, deg - 1] * x
-    return X
+    time = np.array(time)
+    conc = np.array(conc)
 
-hw5_csv = pd.read_csv(r'C:\Users\ASUS\Downloads\OneDrive_1_2025-10-31\hw5.csv')
-hw5_dataset = hw5_csv.to_numpy(dtype = np.float64)
+else:
+    print('[Warning] hw5.csv not found. Generate synthetic Brunhilda data.')
 
-hours = hw5_dataset[:, 0]
-sulfate = hw5_dataset[:, 1]
+    # --------------------------------------------------
+    # Generate synthetic exponential decay data
+    # C(t) = A * exp(-k t) + noise
+    # --------------------------------------------------
+    np.random.seed(0)
 
+    time = np.linspace(1, 200, 40)
+    A_true = 1.2e-4
+    k_true = 0.015
 
-
-
-
-# ---------------------------------------------------------
-# (1) 濃度 vs 時間：散佈圖 + 多項式迴歸曲線
-# ---------------------------------------------------------
+    conc = A_true * np.exp(-k_true * time)
+    conc *= (1 + 0.15 * np.random.randn(len(conc)))  # add noise
+    conc = np.abs(conc)  # ensure positive
+# --------------------------------------------------
+# 2. Linear scale plot
+# --------------------------------------------------
 plt.figure()
-
-# 原始資料
-plt.plot(hours, sulfate, 'ko', label='data')
-
-# 這裡選擇一個「多項式回歸」作為我們的迴歸方法，例：三次多項式
-deg = 3
-X = poly_data_matrix(hours, deg)
-U, Sigma, V = mysvd(X)
-# least square 解：a = V Σ^{-1} U^T y
-a = V @ np.linalg.inv(Sigma) @ (U.T @ sulfate)
-
-# 為了畫平滑曲線，我們在時間軸上取更多點
-t_grid = np.linspace(hours.min(), hours.max(), 200)
-X_grid = poly_data_matrix(t_grid, deg)
-sulfate_pred = X_grid @ a
-
-plt.plot(t_grid, sulfate_pred, 'b-', label=f'poly deg={deg} regression')
-
-plt.title('Sulfate concentration vs time')
-plt.xlabel('time in hours')
-plt.ylabel('sulfate concentration (times $10^{-4}$)')
+plt.plot(time, conc, 'r.', label='Measured data')
+plt.xlabel('time (hours)')
+plt.ylabel('Brunhilda concentration')
+plt.title('Concentration vs Time')
 plt.legend()
-plt.tight_layout()
+plt.grid(True)
 plt.show()
 
-# ---------------------------------------------------------
-# (2) log(濃度) vs log(時間)：散佈圖 + 線性迴歸直線
-# ---------------------------------------------------------
+# --------------------------------------------------
+# 3. Exponential regression
+# ln(C) = ln(A) - k t
+# --------------------------------------------------
+ln_conc = np.log(conc)
+b, a = np.polyfit(time, ln_conc, 1)
+A_est = np.exp(a)
+k_est = -b
 
-# 只取正值（時間與濃度都應該是正的，這裡保險起見）
-mask = (hours > 0) & (sulfate > 0)
-hours_pos = hours[mask]
-sulfate_pos = sulfate[mask]
-
-log_t = np.log(hours_pos)
-log_c = np.log(sulfate_pos)
+t_fit = np.linspace(time.min(), time.max(), 300)
+c_fit = A_est * np.exp(-k_est * t_fit)
 
 plt.figure()
-
-# log-log 的散佈圖
-plt.plot(log_t, log_c, 'ko', label='log-log data')
-
-# 在 log-log 空間做線性回歸：log_c = b0 + b1 * log_t
-X_log = poly_data_matrix(log_t, 1)  # [1, log_t]
-U_log, Sigma_log, V_log = mysvd(X_log)
-a_log = V_log @ np.linalg.inv(Sigma_log) @ (U_log.T @ log_c)
-
-# 畫線
-xg = np.linspace(log_t.min(), log_t.max(), 200)
-Xg_log = poly_data_matrix(xg, 1)
-yg = Xg_log @ a_log
-
-plt.plot(xg, yg, 'b-', label='linear regression in log-log')
-
-plt.title('log(sulfate concentration) vs log(time)')
-plt.xlabel('log(time in hours)')
-plt.ylabel('log(sulfate concentration  (times $10^{-4}$))')
+plt.plot(time, conc, 'r.', label='Measured data')
+plt.plot(t_fit, c_fit, 'b-', label='Exponential fit')
+plt.xlabel('time (hours)')
+plt.ylabel('Brunhilda concentration')
+plt.title('Concentration vs Time (with regression)')
 plt.legend()
-plt.tight_layout()
+plt.grid(True)
 plt.show()
+
+# --------------------------------------------------
+# 4. log-log plot
+# --------------------------------------------------
+plt.figure()
+plt.loglog(time, conc, 'r.', label='Measured data')
+plt.xlabel('time (hours)')
+plt.ylabel('Brunhilda concentration')
+plt.title('Concentration vs Time (log-log scale)')
+plt.legend()
+plt.grid(True, which='both')
+plt.show()
+
+# --------------------------------------------------
+# 5. log-log with regression
+# --------------------------------------------------
+plt.figure()
+plt.loglog(time, conc, 'r.', label='Measured data')
+plt.loglog(t_fit, c_fit, 'b-', label='Exponential fit')
+plt.xlabel('time (hours)')
+plt.ylabel('Brunhilda concentration')
+plt.title('Concentration vs Time (log-log with regression)')
+plt.legend()
+plt.grid(True, which='both')
+plt.show()
+
+print('Regression result:')
+print(f'  C(t) = A * exp(-k t)')
+print(f'  A = {A_est:.4e}')
+print(f'  k = {k_est:.4e}')
