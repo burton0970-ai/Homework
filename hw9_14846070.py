@@ -1,55 +1,89 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Mar 15 10:46:50 2021
-
-@author: htchen
-"""
-#14846070 林家愷
-#from IPython import get_ipython
-#get_ipython().run_line_magic('reset', '-sf')
-import math
 import numpy as np
-import numpy.linalg as la
-import cv2
 import matplotlib.pyplot as plt
-import pandas as pd
-figdpi = 400
+import os
 
-hw9_csv = pd.read_csv(r'C:\Users\ASUS\Downloads\OneDrive_1_2025-10-31\hw9(in).csv').to_numpy(dtype = np.float64)
-t = hw9_csv[:, 0] # 時間
-flow_velocity = hw9_csv[:, 1] # 氣體流速
-plt.figure(dpi=figdpi)
-plt.plot(t, flow_velocity, 'r')
+plt.rcParams['figure.dpi'] = 144
+np.random.seed(0)
+
+# --------------------------------------------------
+# 1. Load data or generate synthetic velocity
+# --------------------------------------------------
+CSV_PATH = 'data/hw9.csv'
+
+if os.path.exists(CSV_PATH):
+    data = np.loadtxt(CSV_PATH, delimiter=',')
+    t = data[:, 0]
+    v = data[:, 1]
+else:
+    print('[Warning] hw9.csv not found. Generate synthetic flow velocity.')
+
+    t = np.linspace(0, 30, 600)
+    v = 2.0 * np.sin(2 * np.pi * 0.7 * t)
+    v += 0.4 * np.random.randn(len(t))   # noise
+    v += 0.3                              # DC offset (important!)
+
+dt = t[1] - t[0]
+
+# --------------------------------------------------
+# 2. Remove DC offset (KEY FIX #1)
+# --------------------------------------------------
+v0 = v - np.mean(v)
+
+# --------------------------------------------------
+# 3. Plot raw velocity
+# --------------------------------------------------
+plt.figure()
+plt.plot(t, v0, 'r')
 plt.title('Gas Flow Velocity')
-plt.xlabel('time in seconds')
-plt.ylabel('ml/sec')
+plt.xlabel('time (in seconds)')
+plt.ylabel('velocity')
+plt.grid(True)
 plt.show()
 
-# Integrating the gas flow velocity yields the net flow
-net_vol = np.cumsum(flow_velocity) * 0.01
-plt.figure(dpi=figdpi)
-plt.plot(t, net_vol, 'r')
-plt.title('Gas Net Flow')
-plt.xlabel('time in seconds')
-plt.ylabel('ml')
+# --------------------------------------------------
+# 4. Trapezoidal integration (KEY FIX #2)
+# --------------------------------------------------
+flow_raw = np.zeros_like(v0)
+for i in range(1, len(v0)):
+    flow_raw[i] = flow_raw[i-1] + 0.5 * (v0[i] + v0[i-1]) * dt
+
+plt.figure()
+plt.plot(t, flow_raw, 'r')
+plt.title('Gas Net Flow (Raw Integration)')
+plt.xlabel('time (in seconds)')
+plt.ylabel('net flow')
+plt.grid(True)
 plt.show()
 
-A = np.zeros((len(t), 3))
-A[:, 0] = 1
-A[:, 1] = t
-A[:, 2] = t * t
-y = net_vol
-a = la.inv(A.T @ A) @ A.T @ y
-trend_curve = a[0] + a[1] * t + a[2] * t * t
+# --------------------------------------------------
+# 5. Moving average filter (KEY FIX #3)
+# --------------------------------------------------
+def moving_average(x, window):
+    return np.convolve(x, np.ones(window) / window, mode='same')
 
-net_vol_corrected = net_vol - trend_curve
+# window ≈ one oscillation period
+window = 30
+v_filt = moving_average(v0, window)
 
-plt.figure(dpi=figdpi)
-plt.plot(t, net_vol_corrected, 'b')
-plt.title('Gas Net Flow (Corrected - Quadratic Detrending)')
-plt.xlabel('time in seconds')
-plt.ylabel('ml')
-plt.savefig('Gas_Net_Flow_Corrected.png')
+plt.figure()
+plt.plot(t, v_filt, 'r')
+plt.title('Gas Flow Velocity (Filtered)')
+plt.xlabel('time (in seconds)')
+plt.ylabel('velocity')
+plt.grid(True)
 plt.show()
-plt.close()
 
+# --------------------------------------------------
+# 6. Integration after filtering
+# --------------------------------------------------
+flow_filt = np.zeros_like(v_filt)
+for i in range(1, len(v_filt)):
+    flow_filt[i] = flow_filt[i-1] + 0.5 * (v_filt[i] + v_filt[i-1]) * dt
+
+plt.figure()
+plt.plot(t, flow_filt, 'r')
+plt.title('Gas Net Flow (Filtered Integration)')
+plt.xlabel('time (in seconds)')
+plt.ylabel('net flow')
+plt.grid(True)
+plt.show()
